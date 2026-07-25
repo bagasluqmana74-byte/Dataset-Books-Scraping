@@ -132,14 +132,30 @@ with tab_assump:
 
     st.subheader("4.2 Uji Multikolinearitas (VIF)")
     X_vif = df[["Rating_Bintang_X1", "Estimasi_Stok_X2"]]
-    vif_data = pd.DataFrame()
-    vif_data["Variabel"] = X_vif.columns
-    vif_data["VIF"] = [variance_inflation_factor(X_vif.values, i) for i in range(X_vif.shape[1])]
-    st.dataframe(vif_data, use_container_width=True)
-    if (vif_data["VIF"] < 10).all():
-        st.success("Tidak terjadi multikolinearitas antar variabel independen (VIF < 10).")
+    konstan_cols = [c for c in X_vif.columns if X_vif[c].nunique() <= 1]
+    if konstan_cols:
+        st.warning(
+            f"Kolom {konstan_cols} bernilai konstan (tidak ada variasi), sehingga VIF tidak dapat "
+            "dihitung untuk kolom tersebut. Variabel konstan otomatis sangat berkorelasi dengan "
+            "intercept model (multikolinearitas sempurna)."
+        )
+        vif_data = pd.DataFrame({"Variabel": X_vif.columns, "VIF": [np.nan] * X_vif.shape[1]})
+        for c in X_vif.columns:
+            if c not in konstan_cols and len(X_vif.columns) - len(konstan_cols) >= 1:
+                vif_data.loc[vif_data["Variabel"] == c, "VIF"] = 1.0
+        st.dataframe(vif_data, use_container_width=True)
     else:
-        st.warning("Terindikasi multikolinearitas pada salah satu variabel (VIF ≥ 10).")
+        try:
+            vif_data = pd.DataFrame()
+            vif_data["Variabel"] = X_vif.columns
+            vif_data["VIF"] = [variance_inflation_factor(X_vif.values, i) for i in range(X_vif.shape[1])]
+            st.dataframe(vif_data, use_container_width=True)
+            if (vif_data["VIF"] < 10).all():
+                st.success("Tidak terjadi multikolinearitas antar variabel independen (VIF < 10).")
+            else:
+                st.warning("Terindikasi multikolinearitas pada salah satu variabel (VIF ≥ 10).")
+        except Exception as e:
+            st.error(f"VIF tidak dapat dihitung: {e}")
 
 # ----------------------------------------------------------------------------
 # 5. VISUALISASI
@@ -157,7 +173,7 @@ with tab_viz:
 
     st.subheader("5.2 Heatmap Matriks Korelasi")
     fig2, ax2 = plt.subplots(figsize=(6, 5))
-    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", vmin=0, vmax=1, ax=ax2)
+    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", vmin=-1, vmax=1, ax=ax2)
     ax2.set_title("Heatmap Matriks Korelasi")
     st.pyplot(fig2)
 
@@ -183,12 +199,21 @@ with tab_predict:
     st.write("Geser slider di bawah untuk melihat estimasi harga berdasarkan model OLS.")
     c1, c2 = st.columns(2)
     rating_input = c1.slider("Rating Bintang (X1)", 1, 5, 3)
-    stok_input = c2.slider(
-        "Estimasi Stok (X2)",
-        int(df["Estimasi_Stok_X2"].min()),
-        int(df["Estimasi_Stok_X2"].max()),
-        int(df["Estimasi_Stok_X2"].median()),
-    )
+
+    stok_min = int(df["Estimasi_Stok_X2"].min())
+    stok_max = int(df["Estimasi_Stok_X2"].max())
+    if stok_min == stok_max:
+        # Kolom konstan (tidak ada variasi nilai) -> slider tidak bisa dibuat
+        c2.info(f"Estimasi Stok (X2) bernilai konstan di seluruh data: **{stok_min}**")
+        stok_input = stok_min
+    else:
+        stok_input = c2.slider(
+            "Estimasi Stok (X2)",
+            stok_min,
+            stok_max,
+            int(df["Estimasi_Stok_X2"].median()),
+        )
+
     pred_input = pd.DataFrame({"const": [1], "Rating_Bintang_X1": [rating_input], "Estimasi_Stok_X2": [stok_input]})
     pred_value = model.predict(pred_input)[0]
     st.metric("Estimasi Harga (£)", f"{pred_value:.2f}")
