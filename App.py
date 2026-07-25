@@ -214,10 +214,15 @@ with tab_predict:
             int(df["Estimasi_Stok_X2"].median()),
         )
 
-    pred_input = pd.DataFrame({"const": [1], "Rating_Bintang_X1": [rating_input], "Estimasi_Stok_X2": [stok_input]})
-    pred_value = model.predict(pred_input)[0]
-    st.metric("Estimasi Harga (£)", f"{pred_value:.2f}")
-    st.caption("Catatan: hasil model memiliki R-squared rendah, sehingga prediksi ini bersifat indikatif, bukan akurat.")
+    # Gunakan array numpy polos (bukan DataFrame) agar urutan kolom dijamin sama
+    # persis dengan urutan variabel model: [const, Rating_Bintang_X1, Estimasi_Stok_X2]
+    try:
+        pred_input = np.array([[1.0, float(rating_input), float(stok_input)]])
+        pred_value = model.predict(pred_input)[0]
+        st.metric("Estimasi Harga (£)", f"{pred_value:.2f}")
+        st.caption("Catatan: hasil model memiliki R-squared rendah, sehingga prediksi ini bersifat indikatif, bukan akurat.")
+    except Exception as e:
+        st.error(f"Prediksi tidak dapat dihitung: {e}")
 
 # ----------------------------------------------------------------------------
 # 7. KESIMPULAN
